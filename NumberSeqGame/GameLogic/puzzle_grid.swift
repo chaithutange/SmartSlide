@@ -38,6 +38,7 @@ struct SettingsView: View {
     @AppStorage("gridSize") var gridSize: Int = 3  // default to 3×3
     @AppStorage("timedMode") var timedMode: Bool = false
     @AppStorage("tileColor") var tileColorRaw: String = TileColorOption.blue.rawValue
+    @AppStorage("soundOn") var soundOn: Bool = true               // <-- sound toggle
     @Environment(\.presentationMode) var presentationMode
 
     var body: some View {
@@ -61,6 +62,9 @@ struct SettingsView: View {
                         }
                     }
                 }
+                Section(header: Text("Sound")) {                        // <-- new section
+                    Toggle("Sound Effects", isOn: $soundOn)
+                }
             }
             .navigationTitle("Settings")
             .navigationBarItems(trailing: Button("Done") {
@@ -75,9 +79,10 @@ struct PuzzleGridView: View {
     // Persistent Settings
     @AppStorage("playerName") private var playerName: String = ""
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
-    @AppStorage("gridSize") private var gridSize: Int = 3  // default to 3×3
+    @AppStorage("gridSize") private var gridSize: Int = 3    // default to 3×3
     @AppStorage("timedMode") private var timedMode: Bool = false
     @AppStorage("tileColor") private var tileColorRaw: String = TileColorOption.blue.rawValue
+    @AppStorage("soundOn") private var soundOn: Bool = true    // <-- read setting
     @AppStorage("bestScore") private var bestScore: Int = Int.max
 
     // Transient State
@@ -222,14 +227,14 @@ struct PuzzleGridView: View {
               adjacentIndices(of: blank).contains(i)
         else { return }
         tiles.swapAt(i, blank)
-        AudioServicesPlaySystemSound(1104)
+        if soundOn { AudioServicesPlaySystemSound(1104) }     // <-- conditional sound
         moves += 1
         checkSolved()
     }
     private func checkSolved() {
         if tiles == Array(1..<totalTiles) + [0] {
             isSolved = true
-            AudioServicesPlaySystemSound(1016)
+            if soundOn { AudioServicesPlaySystemSound(1016) } // <-- conditional sound
             if moves < bestScore { bestScore = moves }
         }
     }
