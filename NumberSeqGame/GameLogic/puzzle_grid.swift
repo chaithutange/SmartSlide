@@ -35,7 +35,7 @@ enum TileColorOption: String, CaseIterable, Identifiable {
 // MARK: - Settings / Onboarding View
 struct SettingsView: View {
     @AppStorage("playerName") var playerName: String = ""
-    @AppStorage("gridSize") var gridSize: Int = 4
+    @AppStorage("gridSize") var gridSize: Int = 3  // default to 3×3
     @AppStorage("timedMode") var timedMode: Bool = false
     @AppStorage("tileColor") var tileColorRaw: String = TileColorOption.blue.rawValue
     @Environment(\.presentationMode) var presentationMode
@@ -75,7 +75,7 @@ struct PuzzleGridView: View {
     // Persistent Settings
     @AppStorage("playerName") private var playerName: String = ""
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
-    @AppStorage("gridSize") private var gridSize: Int = 4
+    @AppStorage("gridSize") private var gridSize: Int = 3  // default to 3×3
     @AppStorage("timedMode") private var timedMode: Bool = false
     @AppStorage("tileColor") private var tileColorRaw: String = TileColorOption.blue.rawValue
     @AppStorage("bestScore") private var bestScore: Int = Int.max
@@ -115,6 +115,7 @@ struct PuzzleGridView: View {
             startTimerIfNeeded(); newGame()
         }
         .onChange(of: timedMode) { _ in startTimerIfNeeded() }
+        .onChange(of: gridSize) { _ in newGame() }
     }
 
     // MARK: Header
