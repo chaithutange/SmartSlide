@@ -25,6 +25,8 @@ struct PuzzleGridView: View {
     @State private var timerCancellable: AnyCancellable?
     @State private var showIntro: Bool = false
     @State private var hintTileIndex: Int? = nil
+    @State private var hintedIndex: Int? = nil
+
 
 
     // Computed
@@ -95,6 +97,12 @@ struct PuzzleGridView: View {
                 Text("Moves: \(moves)").font(.subheadline)
                 Text("Best: \(bestScore == Int.max ? "--" : "\(bestScore)")").font(.subheadline)
             }
+            Button(action: { showHint() }) {
+                Image(systemName: "lightbulb")
+                    .font(.title2)
+                    .foregroundColor(selectedColor.fillColor)
+            }
+            .buttonStyle(.plain)
             Button(action: { showSettings = true }) {
                 Image(systemName: "gearshape.fill")
                     .font(.title2)
@@ -112,9 +120,9 @@ struct PuzzleGridView: View {
                 let number = idx < tiles.count ? tiles[idx] : 0
                 TileView(
                     number: number,
-                    fillColor: (hintTileIndex == idx ? Color.yellow.opacity(0.8) : selectedColor.fillColor),
-
-                   // fillColor: selectedColor.fillColor,
+                    fillColor: (hintedIndex == idx && number != 0)
+                               ? Color.yellow.opacity(0.85)
+                               : selectedColor.fillColor,
                     strokeColor: selectedColor.strokeColor
                 )
                 .aspectRatio(1, contentMode: .fit)
@@ -141,6 +149,17 @@ struct PuzzleGridView: View {
                         .shadow(radius: 4)
                 }
                 .padding(20)
+            }
+        }
+    }
+    
+    private func showHint() {
+        guard !isSolved else { return }
+        if let idx = HintEngine.nextBestMove(tiles: tiles, grid: gridSize) {
+            hintedIndex = idx
+            // auto clear after a moment
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                self.hintedIndex = nil
             }
         }
     }
@@ -180,6 +199,7 @@ struct PuzzleGridView: View {
 
     // MARK: Game logic
     private func newGame() {
+        hintedIndex = nil
         var arr: [Int] = Array(1..<totalTiles) + [0]
         repeat { arr.shuffle() } while !isSolvable(arr)
         withAnimation { tiles = arr }
@@ -188,6 +208,7 @@ struct PuzzleGridView: View {
     }
 
     private func moveTile(at i: Int) {
+        hintedIndex = nil
         guard i < tiles.count,
               let blank = tiles.firstIndex(of: 0),
               adjacentIndices(of: blank).contains(i)
