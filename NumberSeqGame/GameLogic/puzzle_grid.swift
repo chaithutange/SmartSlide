@@ -69,6 +69,7 @@ struct PuzzleGridView: View {
             }
             startTimerIfNeeded()
             newGame()
+                
             
             if !hasShownHint {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -83,6 +84,18 @@ struct PuzzleGridView: View {
                 }
             }
         }
+        // 👇 Add this right after `.task`
+            .onChange(of: gridSize) { _ in
+                tiles = []
+                moves = 0
+                isSolved = false
+                DispatchQueue.main.async {
+                    newGame()
+                }
+            }
+            .onChange(of: timedMode) { _ in
+                startTimerIfNeeded()
+            }
     }
 
     // MARK: Header
@@ -131,6 +144,7 @@ struct PuzzleGridView: View {
             }
         }
         .padding(16)
+        .id(gridSize)  
     }
 
     // MARK: FAB
