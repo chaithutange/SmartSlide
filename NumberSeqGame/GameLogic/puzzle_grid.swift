@@ -2,99 +2,32 @@ import SwiftUI
 import AudioToolbox
 import Combine
 
-// MARK: - Share Sheet Wrapper
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-// MARK: - Tile Color Options
-enum TileColorOption: String, CaseIterable, Identifiable {
-    var id: String { rawValue }
-    case blue = "Blue", purple = "Purple", pink = "Pink"
-
-    var fillColor: Color {
-        switch self {
-        case .blue:   return Color.blue.opacity(0.8)
-        case .purple: return Color.purple.opacity(0.8)
-        case .pink:   return Color.pink.opacity(0.8)
-        }
-    }
-    var strokeColor: Color {
-        switch self {
-        case .blue:   return Color.blue
-        case .purple: return Color.purple
-        case .pink:   return Color.pink
-        }
-    }
-}
-
-// MARK: - Settings / Onboarding View
-struct SettingsView: View {
-    @AppStorage("playerName") var playerName: String = ""
-    @AppStorage("gridSize") var gridSize: Int = 3  // default to 3×3
-    @AppStorage("timedMode") var timedMode: Bool = false
-    @AppStorage("tileColor") var tileColorRaw: String = TileColorOption.blue.rawValue
-    @AppStorage("soundOn") var soundOn: Bool = true               // <-- sound toggle
-    @Environment(\.presentationMode) var presentationMode
-
-    var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Player Profile")) {
-                    TextField("Player Name (optional)", text: $playerName)
-                }
-                Section(header: Text("Game Settings")) {
-                    Picker("Grid Size", selection: $gridSize) {
-                        Text("3 × 3").tag(3)
-                        Text("4 × 4").tag(4)
-                        Text("5 × 5").tag(5)
-                    }
-                    Toggle("Timed Mode", isOn: $timedMode)
-                }
-                Section(header: Text("Appearance")) {
-                    Picker("Tile Color", selection: $tileColorRaw) {
-                        ForEach(TileColorOption.allCases) { option in
-                            Text(option.rawValue).tag(option.rawValue)
-                        }
-                    }
-                }
-                Section(header: Text("Sound")) {                        // <-- new section
-                    Toggle("Sound Effects", isOn: $soundOn)
-                }
-            }
-            .navigationTitle("Settings")
-            .navigationBarItems(trailing: Button("Done") {
-                presentationMode.wrappedValue.dismiss()
-            })
-        }
-    }
-}
-
-// MARK: - Main Puzzle View
 struct PuzzleGridView: View {
-    // Persistent Settings
+    // Persistent settings
     @AppStorage("playerName") private var playerName: String = ""
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
-    @AppStorage("gridSize") private var gridSize: Int = 3    // default to 3×3
+    @AppStorage("gridSize") private var gridSize: Int = 3
     @AppStorage("timedMode") private var timedMode: Bool = false
     @AppStorage("tileColor") private var tileColorRaw: String = TileColorOption.blue.rawValue
-    @AppStorage("soundOn") private var soundOn: Bool = true    // <-- read setting
+    @AppStorage("soundOn") private var soundOn: Bool = true
     @AppStorage("bestScore") private var bestScore: Int = Int.max
+    @AppStorage("hasShownHint") private var hasShownHint: Bool = false
 
-    // Transient State
+
+    // State
     @State private var tiles: [Int] = []
     @State private var moves: Int = 0
     @State private var isSolved: Bool = false
     @State private var showSettings: Bool = false
     @State private var showShare: Bool = false
+    @State private var shareItems: [Any] = []
     @State private var elapsedTime: Int = 0
     @State private var timerCancellable: AnyCancellable?
+    @State private var showIntro: Bool = false
+    @State private var hintTileIndex: Int? = nil
 
-    // Computed Properties
+
+    // Computed
     private var selectedColor: TileColorOption { TileColorOption(rawValue: tileColorRaw) ?? .blue }
     private var totalTiles: Int { gridSize * gridSize }
     private var columns: [GridItem] { Array(repeating: .init(.flexible(), spacing: 8), count: gridSize) }
@@ -105,7 +38,6 @@ struct PuzzleGridView: View {
                 header
                 gameGrid
                 Spacer(minLength: 20)
-                // Fixed Footer
                 Link("Powered by chaitronix.net", destination: URL(string: "https://chaitronix.net")!)
                     .font(.footnote)
                     .padding(.bottom, 8)
@@ -113,14 +45,42 @@ struct PuzzleGridView: View {
             fabButton
             if isSolved { victoryOverlay }
         }
-        .sheet(isPresented: $showSettings) { SettingsView() }
-        .sheet(isPresented: $showShare) { ShareSheet(items: ["I solved SmartSlide in \(moves) moves!"]) }
-        .onAppear {
-            if !hasOnboarded { showSettings = true; hasOnboarded = true }
-            startTimerIfNeeded(); newGame()
+        // Intro on first launch
+        .fullScreenCover(isPresented: $showIntro) {
+            IntroView(
+                isPresented: $showIntro,
+                onOpenSettings: { showSettings = true }
+            )
         }
-        .onChange(of: timedMode) { _ in startTimerIfNeeded() }
-        .onChange(of: gridSize) { _ in newGame() }
+        // Settings sheet
+        .sheet(isPresented: $showSettings) { SettingsView() }
+        // Share sheet
+        .sheet(isPresented: $showShare, onDismiss: { shareItems.removeAll() }) {
+            ShareSheet(items: shareItems)
+        }
+        .id(shareItems.count)
+        // Launch logic
+        .task {
+            if !hasOnboarded {
+                showIntro = true
+                hasOnboarded = true
+            }
+            startTimerIfNeeded()
+            newGame()
+            
+            if !hasShownHint {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    if let blank = tiles.firstIndex(of: 0),
+                       let firstMove = adjacentIndices(of: blank).first {
+                        hintTileIndex = firstMove
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            hintTileIndex = nil
+                            hasShownHint = true
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Header
@@ -145,23 +105,27 @@ struct PuzzleGridView: View {
         .background(Color(UIColor.systemBackground).shadow(radius: 2))
     }
 
-    // MARK: Game Grid
+    // MARK: Game grid
     private var gameGrid: some View {
         LazyVGrid(columns: columns, spacing: 8) {
             ForEach(0..<totalTiles, id: \.self) { idx in
                 let number = idx < tiles.count ? tiles[idx] : 0
-                TileView(number: number,
-                         fillColor: selectedColor.fillColor,
-                         strokeColor: selectedColor.strokeColor)
-                    .aspectRatio(1, contentMode: .fit)
-                    .onTapGesture { moveTile(at: idx) }
-                    .animation(.easeInOut, value: tiles)
+                TileView(
+                    number: number,
+                    fillColor: (hintTileIndex == idx ? Color.yellow.opacity(0.8) : selectedColor.fillColor),
+
+                   // fillColor: selectedColor.fillColor,
+                    strokeColor: selectedColor.strokeColor
+                )
+                .aspectRatio(1, contentMode: .fit)
+                .onTapGesture { moveTile(at: idx) }
+                .animation(.easeInOut, value: tiles)
             }
         }
         .padding(16)
     }
 
-    // MARK: Floating Action Button
+    // MARK: FAB
     private var fabButton: some View {
         VStack {
             Spacer()
@@ -181,7 +145,7 @@ struct PuzzleGridView: View {
         }
     }
 
-    // MARK: Victory Overlay
+    // MARK: Victory overlay
     private var victoryOverlay: some View {
         ZStack {
             Color.black.opacity(0.4).ignoresSafeArea()
@@ -198,7 +162,7 @@ struct PuzzleGridView: View {
                         .background(Color.green.opacity(0.8))
                         .foregroundColor(.white)
                         .cornerRadius(8)
-                    Button("Share") { showShare = true }
+                    Button("Share") { share() }
                         .padding(.horizontal, 30)
                         .padding(.vertical, 12)
                         .background(Color.blue.opacity(0.8))
@@ -214,28 +178,52 @@ struct PuzzleGridView: View {
         }
     }
 
-    // MARK: Game Logic
+    // MARK: Game logic
     private func newGame() {
         var arr: [Int] = Array(1..<totalTiles) + [0]
         repeat { arr.shuffle() } while !isSolvable(arr)
         withAnimation { tiles = arr }
-        moves = 0; isSolved = false
+        moves = 0
+        isSolved = false
     }
+
     private func moveTile(at i: Int) {
         guard i < tiles.count,
               let blank = tiles.firstIndex(of: 0),
               adjacentIndices(of: blank).contains(i)
         else { return }
         tiles.swapAt(i, blank)
-        if soundOn { AudioServicesPlaySystemSound(1104) }     // <-- conditional sound
+        if soundOn { AudioServicesPlaySystemSound(1104) }
         moves += 1
         checkSolved()
     }
+
     private func checkSolved() {
         if tiles == Array(1..<totalTiles) + [0] {
             isSolved = true
-            if soundOn { AudioServicesPlaySystemSound(1016) } // <-- conditional sound
+            if soundOn { AudioServicesPlaySystemSound(1016) }
             if moves < bestScore { bestScore = moves }
+        }
+    }
+
+    // MARK: Share logic
+    private func share() {
+        let text = "I solved SmartSlide in \(moves) moves!"
+
+        // Try to render the key window into an image
+        var items: [Any] = [text]
+        if let window = UIApplication.shared.keyWindow {
+            let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+            let img = renderer.image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            items.insert(img, at: 0)
+        }
+
+        // Update items first, then present on next runloop
+        self.shareItems = items
+        DispatchQueue.main.async {
+            self.showShare = true
         }
     }
 
@@ -258,6 +246,7 @@ struct PuzzleGridView: View {
             return (0..<gridSize).contains(r) && (0..<gridSize).contains(c) ? r*gridSize + c : nil
         }
     }
+
     private func isSolvable(_ arr: [Int]) -> Bool {
         let inv = arr.filter { $0 > 0 }.enumerated().reduce(0) { sum, p in
             sum + arr[(p.0+1)...].filter { $0 > 0 && p.1 > $0 }.count
@@ -270,34 +259,8 @@ struct PuzzleGridView: View {
     }
 }
 
-// MARK: - Tile View
-struct TileView: View {
-    let number: Int; let fillColor: Color; let strokeColor: Color
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(number == 0 ? Color.clear : fillColor)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(strokeColor, lineWidth: number == 0 ? 1 : 0)
-                )
-            if number != 0 {
-                Text("\(number)")
-                    .font(.title2.bold())
-                    .foregroundColor(.white)
-                    .shadow(radius: 1)
-            }
-        }
-        .shadow(color: .black.opacity(0.2), radius: 2, x: 1, y: 1)
-    }
-}
-
 // MARK: - Int parity
 private extension Int {
     var isEven: Bool { self % 2 == 0 }
     var isOdd: Bool { !isEven }
-}
-
-struct PuzzleGridView_Previews: PreviewProvider {
-    static var previews: some View { PuzzleGridView() }
 }

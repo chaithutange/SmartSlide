@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "Copilot_20250726_233954.png",
+      "filename" : "AppIcon_NoAlpha.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "Copilot_20250726_233954 1.png",
+      "filename" : "AppIcon_NoAlpha 1.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -25,7 +25,7 @@
           "value" : "tinted"
         }
       ],
-      "filename" : "Copilot_20250726_233954 2.png",
+      "filename" : "AppIcon_NoAlpha 2.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
